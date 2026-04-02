@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --font-thai: "Prompt", sans-serif;
+  --font-english: "Inter", sans-serif;
+}
+
+@layer base {
+  html, body {
+    font-family: "Prompt", "Inter", sans-serif !important;
+    @apply bg-[#0f172a] text-slate-200 antialiased;
+  }
+
+  .font-inter {
+    font-family: "Inter", sans-serif !important;
+  }
+
+  /* Form inputs should NOT have pointer cursor */
+  input, textarea, select {
+    cursor: text !important;
+    font-family: inherit;
+  }
+
+  /* Buttons and clickable items still have pointer */
+  button, [role="button"], a {
+    cursor: pointer !important;
+  }
+}
+
+@layer components {
+  .minimal-card {
+    @apply bg-[#1e293b] border border-slate-800 rounded-xl transition-all duration-200;
+  }
+  
+  .minimal-card:hover {
+    @apply border-slate-700 bg-[#1e293b];
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 rounded-full;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-600;
+  }
+}
