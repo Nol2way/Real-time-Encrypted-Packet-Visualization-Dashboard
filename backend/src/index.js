@@ -100,6 +100,30 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
+app.post('/api/auth/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
+  if (username.length < 3) return res.status(400).json({ error: 'ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร' });
+  if (password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+  try {
+    const existing = getUserByUsername(username);
+    if (existing) return res.status(400).json({ error: 'ชื่อผู้ใช้นี้ถูกใช้งานแล้ว' });
+    const clientIp = getClientIp(req);
+    const newId = createUser(username, password, 'user', clientIp || '*');
+    const user = getUserById(newId);
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role, ip_subnet: user.ip_subnet },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    console.log(`[Auth] สมัครสมาชิกสำเร็จ: ${username} (IP: ${clientIp})`);
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role, ip_subnet: user.ip_subnet } });
+  } catch (err) {
+    console.error('[Auth] Register Crash:', err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
+  }
+});
+
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   try {
     console.log(`[Auth] ตรวจสอบสถานะผู้ใช้ ID: ${req.user.id}`);
@@ -108,16 +132,77 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
       console.log(`[Auth] ไม่พบข้อมูลผู้ใช้ในฐานข้อมูลสำหรับ ID: ${req.user.id}`);
       return res.status(404).json({ error: 'ไม่พบข้อมูลผู้ใช้' });
     }
-    res.json(user);
+    // ออก JWT ใหม่ถ้า role หรือ ip_subnet ใน DB ต่างจาก token (เช่น Admin เพิ่งเปลี่ยน role)
+    let newToken = null;
+    if (user.role !== req.user.role || user.ip_subnet !== req.user.ip_subnet) {
+      console.log(`[Auth] Role/IP เปลี่ยน: ${req.user.role} → ${user.role}, ออก Token ใหม่ให้ ${user.username}`);
+      newToken = jwt.sign(
+        { id: user.id, username: user.username, role: user.role, ip_subnet: user.ip_subnet },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+    }
+    res.json({ ...user, ...(newToken ? { newToken } : {}) });
   } catch (e) {
     console.error('[Auth] /me Crash:', e);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
+// เปลี่ยนรหัสผ่านตัวเอง (ทุก role ทำได้)
+app.put('/api/auth/password', authenticateToken, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'กรุณากรอกรหัสผ่านปัจจุบันและรหัสผ่านใหม่' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร' });
+  try {
+    const user = getUserByUsername(req.user.username);
+    if (!user) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+    const valid = bcrypt.compareSync(currentPassword, user.password_hash);
+    if (!valid) return res.status(400).json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
+    updateUser(user.id, user.role, user.ip_subnet, newPassword, user.status);
+    console.log(`[Auth] เปลี่ยนรหัสผ่านสำเร็จ: ${user.username}`);
+    res.json({ ok: true, message: 'เปลี่ยนรหัสผ่านสำเร็จ' });
+  } catch (err) {
+    console.error('[Auth] Change Password Crash:', err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
+  }
+});
+
 // REST Endpoints
 app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
   res.json(getUsers());
+});
+
+app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
+  const { username, password, role = 'user', ip_subnet = '*', status = 'active' } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'กรุณากรอก username และ password' });
+  if (getUserByUsername(username)) return res.status(400).json({ error: 'ชื่อผู้ใช้นี้ถูกใช้งานแล้ว' });
+  try {
+    const newId = createUser(username, password, role, ip_subnet);
+    const user = getUserById(newId);
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: 'สร้างผู้ใช้ไม่สำเร็จ' });
+  }
+});
+
+app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
+  const { role, ip_subnet, password, status } = req.body;
+  try {
+    updateUser(Number(req.params.id), role, ip_subnet, password || null, status);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'อัปเดตผู้ใช้ไม่สำเร็จ' });
+  }
+});
+
+app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    deleteUser(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'ลบผู้ใช้ไม่สำเร็จ' });
+  }
 });
 
 app.get('/api/history', authenticateToken, (req, res) => {
@@ -168,7 +253,7 @@ batcher.on('batch', (packets) => {
 });
 
 const PORT = 3001;
-server.listen(PORT, () => {
-  console.log(`[Server] รันอยู่ที่พอร์ต ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Server] รันอยู่ที่พอร์ต ${PORT} (0.0.0.0)`);
   startSniffing();
 });

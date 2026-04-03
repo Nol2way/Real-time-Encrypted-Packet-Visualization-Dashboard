@@ -4,14 +4,17 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import DataGrid from './components/DataGrid';
 import UserManagement from './pages/UserManagement';
-import { Download, ShieldAlert, LogOut, Play, Pause } from 'lucide-react';
+import PacketsPage from './pages/PacketsPage';
+import EncryptionPage from './pages/EncryptionPage';
+import AccountPage from './pages/AccountPage';
+import LogsPage from './pages/LogsPage';
 import { useAuth } from './contexts/AuthContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = `http://${window.location.hostname}:3001`;
 
 const MainLayout = () => {
   const { user, token, logout } = useAuth();
@@ -110,8 +113,12 @@ const MainLayout = () => {
         <header className="h-16 border-b border-slate-800 flex items-center justify-between px-8 shrink-0 bg-[#0f172a]">
           <div className="flex items-center space-x-6">
             <h1 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-              {activeTab === 'dashboard' ? 'Real-time Telemetry' : 
-               activeTab === 'history' ? 'Packet Archive' : 'Access Control'}
+              {activeTab === 'dashboard'  ? 'Real-time Telemetry' :
+               activeTab === 'packets'   ? 'Live Packet Feed' :
+               activeTab === 'encryption'? 'RSA Encryption Lab' :
+               activeTab === 'history'   ? 'Packet Archive' :
+               activeTab === 'account'   ? 'My Account' :
+               activeTab === 'logs'      ? 'Login Activity Logs' : 'User Management'}
             </h1>
             
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg overflow-hidden p-0.5">
@@ -131,21 +138,28 @@ const MainLayout = () => {
           </div>
           
           <div className="flex items-center space-x-4">
-            <button 
-                onClick={exportToPDF}
-                className="p-2 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-600 rounded-lg transition-all"
-                title="Download PDF Report"
-            >
-                <Download size={16} />
-            </button>
+            {user?.role === 'admin' && (
+              <button 
+                  onClick={exportToPDF}
+                  className="p-2 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-600 rounded-lg transition-all"
+                  title="ดาวน์โหลด PDF Report (Admin Only)"
+              >
+                  <i className="fa-solid fa-file-pdf text-sm" />
+              </button>
+            )}
             <div className="h-4 w-px bg-slate-800"></div>
             <div className="flex items-center space-x-3">
+                <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+                  user?.role === 'admin'
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+                }`}>{user?.role === 'admin' ? 'Admin' : 'User'}</span>
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">{user?.username}</span>
                 <button 
                   onClick={logout}
                   className="p-2 text-rose-500/70 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
                 >
-                  <LogOut size={16} />
+                  <i className="fa-solid fa-right-from-bracket text-sm" />
                 </button>
             </div>
           </div>
@@ -153,9 +167,13 @@ const MainLayout = () => {
 
         <div className="flex-1 overflow-auto p-8">
             <div className="max-w-7xl mx-auto h-full">
-                {activeTab === 'dashboard' && <Dashboard packets={packets} />}
-                {activeTab === 'history' && <DataGrid packets={packets} />}
-                {activeTab === 'users' && <UserManagement />}
+                {activeTab === 'dashboard'   && <Dashboard packets={packets} />}
+                {activeTab === 'packets'     && <PacketsPage packets={packets} isPaused={isPaused} setIsPaused={setIsPaused} />}
+                {activeTab === 'encryption'  && <EncryptionPage />}
+                {activeTab === 'history'     && <DataGrid packets={packets} />}
+                {activeTab === 'account'     && <AccountPage />}
+                {activeTab === 'logs'        && user?.role === 'admin' && <LogsPage />}
+                {activeTab === 'users'       && user?.role === 'admin' && <UserManagement />}
             </div>
         </div>
 
@@ -163,7 +181,7 @@ const MainLayout = () => {
             <div className="fixed bottom-8 right-8 z-50 space-y-2">
                 {alerts.map((alert, idx) => (
                     <div key={idx} className="bg-slate-900 text-white p-4 rounded-xl shadow-2xl w-72 flex items-start space-x-3 border border-slate-800 animate-in slide-in-from-right-4">
-                        <ShieldAlert size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                        <i className="fa-solid fa-shield-exclamation text-rose-500 shrink-0 mt-0.5 text-base" />
                         <div>
                             <p className="text-[11px] font-bold leading-tight text-slate-200">{alert.message}</p>
                             <span className="text-[9px] text-slate-500 font-bold uppercase mt-2 block">{format(new Date(), 'HH:mm:ss')}</span>

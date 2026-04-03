@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const api = axios.create({
-    baseURL: 'http://localhost:3001/api',
+    baseURL: `http://${window.location.hostname}:3001/api`,
   });
 
   api.interceptors.request.use(config => {
@@ -26,7 +26,15 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       try {
         const res = await api.get('/auth/me');
-        setUser(res.data);
+        const { newToken, ...userData } = res.data;
+        // ถ้า backend ออก token ใหม่ (role/ip_subnet เปลี่ยน) ให้อัปเดตทันที
+        if (newToken) {
+          console.log('[Auth] ได้รับ Token ใหม่ — role/IP เปลี่ยน กำลังอัปเดต session');
+          localStorage.setItem('token', newToken);
+          setToken(newToken); // triggers useEffect → loadUser ครั้งเดียว แล้วหยุด
+          return;
+        }
+        setUser(userData);
       } catch (error) {
         console.error("Auth Load Error:", error);
         setToken(null);
@@ -59,6 +67,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const register = async (username, password) => {
+    try {
+      const res = await api.post('/auth/register', { username, password });
+      const { token: newToken, user: userData } = res.data;
+      localStorage.setItem('token', newToken);
+      setToken(newToken);
+      setUser(userData);
+      toast.success('สมัครสมาชิกสำเร็จ!');
+      return true;
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'สมัครสมาชิกไม่สำเร็จ';
+      toast.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -67,7 +91,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, api, isLoggedIn: !!user }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, register, api, isLoggedIn: !!user }}>
       {children}
     </AuthContext.Provider>
   );
